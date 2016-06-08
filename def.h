@@ -1,5 +1,6 @@
 #define ERR 13 //Error line for timer
 #define DET 12 //Detonation line for timer (only for needy modules)
+#define win_LED A0    //  green led on module
 
 #define c_RED 1
 #define c_BLUE 2
