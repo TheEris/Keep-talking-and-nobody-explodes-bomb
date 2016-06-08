@@ -1,15 +1,17 @@
 #include <Wire.h>
 #include "def.h"
 
-const byte pins[6] = {4, 5, 6, 7, 8, 9};    //  input pins for wires, pullups
-byte In[6];                                 //  holds the pin status
-byte serBuf[10];                            //  temp buffer for serial
+const byte pins[6] = {4, 5, 6, 7, 8, 9};              //  input pins for wires, pullups
+byte In[6];                                           //  holds the pin status
+byte serBuf[10];                                      //  temp buffer for serial
 
-byte wireCount = 0;                         //  number of wires
-byte wirePosition[6];                       //  where are they
-byte wireColor[6];                          //  wire colors
-byte cutMask = 0;                           //  position where cut the wire
-
+byte wireCount = 0;                                   //  number of wires
+byte wirePosition[6];                                 //  where are they
+byte wireColor[6];                                    //  wire colors
+byte cutMask = 0;                                     //  position where cut the wire
+byte mask[6];                                         //  mask for cheking the wires
+char serialNr[6] = {'A', 'B', 'C', 'D', '2', '3'};    //  Serial number
+byte generated = 0;                                   //  did you generated the mask ?
 
 void setup() {
   Serial.begin(9600);
@@ -18,6 +20,10 @@ void setup() {
   for (byte x = 0; x < 6; x++) {
     pinMode(pins[x], INPUT_PULLUP);
   }
+
+  pinMode(ERR, OUTPUT);
+  pinMode(DET, OUTPUT);
+  pinMode(win_LED, OUTPUT);
 
   scanInputs();
   Info();
@@ -31,8 +37,8 @@ void setup() {
 }
 
 void loop() {
-  //getWires();
-  //Check();
+  getWires();
+  Check();
   delay(100);
 }
 
@@ -56,6 +62,13 @@ void Info() {
   Serial.print(F("Detected: "));
   Serial.print(wireCount);
   Serial.println(F(" wires"));
+  Serial.print(F("Serial number: "));
+
+  for (byte x = 0; x < 10; x++) {
+    Serial.print(serialNr[x]);
+  }
+  Serial.println(F(""));
+
   Serial.println(F("-------------------------------------------------------"));
   Serial.println(F("Please type in thier color with int value from table below,"));
   Serial.println(F("in format '121554'."));
@@ -117,26 +130,101 @@ void getColors() {
 }
 
 void getCutMask() {
+  byte lastDigit = serialNr[5] - 48;
+  Serial.print (F("last Serial number: "));
+  Serial.println (lastDigit);
+
   if (wireCount == 3) {
+    Serial.println(F("3 wires"));
     if (isThere(c_RED) == 0) {
-      Serial.println("No red");
+      Serial.println(F("No red"));
       cutMask = wirePosition[1];
     }
     else if (wireColor[2] == c_WHITE) {
-      Serial.println("last wire");
+      Serial.println(F("last wire"));
       cutMask = wirePosition[2];
     }
     else if (isThere(c_BLUE) >= 2) {
-      Serial.println("last Blue");
+      Serial.println(F("last Blue"));
       cutMask = wirePosition[lastWire(c_BLUE)];
     }
     else {
-      Serial.println("no rule, last wire");
+      Serial.println(F("no rule, last wire"));
       cutMask = wirePosition[2];
     }
   }
+  // ------------------------------------------
+  else if (wireCount == 4) {
+    Serial.println(F("4 wires"));
+    if (isThere(c_RED) > 1 && !(lastDigit % 2 == 0) ) {
+      Serial.println(F("1+red, odd last serial number"));
+      cutMask = wirePosition[lastWire(c_RED)];
+    }
+    else if (wireColor[3] == c_YELLOW && isThere(c_RED) == 0) {
+      Serial.println(F("last wire yellow, no red"));
+      cutMask = wirePosition[0];
+    }
+    else if (isThere(c_BLUE) == 1) {
+      Serial.println(F("one blue"));
+      cutMask = wirePosition[0];
+    }
+    else if (isThere(c_YELLOW) > 1) {
+      Serial.println(F("1+Yellow"));
+      cutMask = wirePosition[3];
+    }
+    else {
+      Serial.println(F("no rule"));
+      cutMask = wirePosition[1];
+    }
+  }
+  // ------------------------------------------
+  else if (wireCount == 5) {
+    Serial.println(F("5 wires"));
+    if (wireColor[4] == c_BLACK && !(lastDigit % 2 == 0)) {
+      Serial.println(F("last black, odd number"));
+      cutMask = wirePosition[3];
+    }
+    else if (isThere(c_RED) == 1 && isThere(c_YELLOW) > 1) {
+      Serial.println(F("1 red, +1yellow"));
+      cutMask = wirePosition[0];
+    }
+    else if (isThere(c_BLACK) == 0) {
+      Serial.println(F("no black"));
+      cutMask = wirePosition[1];
+    }
+    else {
+      Serial.println(F("no rule"));
+      cutMask = wirePosition[0];
+    }
+  }
+  // ------------------------------------------
+
+  else if (wireCount == 6) {
+    Serial.println(F("6 wires"));
+    if (isThere(c_YELLOW) == 0 && (lastDigit % 2 == 0)) {
+      Serial.println(F("no yellow, odd number"));
+      cutMask = wirePosition[2];
+    }
+    else if (isThere(c_YELLOW) == 1 && isThere(c_WHITE) > 1) {
+      cutMask = wirePosition[3];
+    }
+    else if (isThere(c_RED) == 0) {
+      cutMask = wirePosition[5];
+    }
+    else {
+      cutMask = wirePosition[3];
+    }
+  }
+
+  // ------------------------------------------
+
+  else {
+    Serial.println(F("Error"));
+    while (true) {};
+  }
   Serial.print(F("Cut the wire in position "));
   Serial.println(cutMask);
+
 }
 
 byte lastWire(byte color) {
@@ -159,9 +247,45 @@ byte isThere(byte color) {
   return colorCount;
 }
 
-
 void getWires() {
   for (byte x = 0; x < 6; x++) {
     In[x] = digitalRead(pins[x]);
   }
 }
+
+void Check() {
+  byte pinChange = 0;   //did pins changed ?
+
+  for (byte x = 0; x < 6; x++) {
+    if (In[x] != mask[x] ) {
+      mask[x] = In[x];
+      pinChange++;
+    }
+  }
+
+  if (pinChange > 0 && generated == 1) {
+    pinChange = 0;
+    if (In[cutMask - 1] == 1) {
+      win();
+    }
+    else {
+      Error();
+    }
+  }
+  generated = 1;
+}
+
+void win() {
+  //module deactivated
+  digitalWrite(win_LED, HIGH);
+  Serial.println(F("You win!"));
+  while (true) {}; //do nothing until restart
+}
+
+void Error() {
+  Serial.println(F("nope!"));
+  digitalWrite(ERR, LOW);
+  delay(10);
+  digitalWrite(ERR, HIGH);
+}
+
