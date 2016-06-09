@@ -4,18 +4,26 @@
 const byte pins[6] = {4, 5, 6, 7, 8, 9};              //  input pins for wires, pullups
 byte In[6];                                           //  holds the pin status
 byte serBuf[10];                                      //  temp buffer for serial
+byte ICbuf[10];                                       //  buffer for I2C bus
 
 byte wireCount = 0;                                   //  number of wires
 byte wirePosition[6];                                 //  where are they
 byte wireColor[6];                                    //  wire colors
 byte cutMask = 0;                                     //  position where cut the wire
 byte mask[6];                                         //  mask for cheking the wires
-char serialNr[6] = {'A', 'B', 'C', 'D', '2', '3'};    //  Serial number
+char serialNr[6];                                     //  Serial number
 byte generated = 0;                                   //  did you generated the mask ?
+
+boolean flagActive = false;                           //  is modul active ?
+boolean flagSerial = false;                           //  serial number from master has arrived
+boolean flagColors = false;                           //  colors from master has arrived
 
 void setup() {
   Serial.begin(9600);
   while (!Serial);
+  Wire.begin(2);
+  Wire.onReceive(rec);                                // recive data from I2C bus
+  Wire.onRequest(req);                                // request data from I2C bus (device)
 
   for (byte x = 0; x < 6; x++) {
     pinMode(pins[x], INPUT_PULLUP);
@@ -26,19 +34,15 @@ void setup() {
   pinMode(win_LED, OUTPUT);
 
   scanInputs();
-  Info();
-
-  while (!Serial.available()) {
-    delay(500);
-  }
-
-  getColors();
+  setColors();
   getCutMask();
 }
 
 void loop() {
-  getWires();
-  Check();
+  if (flagActive) {
+    getWires();
+    Check();
+  }
   delay(100);
 }
 
@@ -57,76 +61,49 @@ void scanInputs() {
   }
 }
 
-void Info() {
-  Serial.println(F("Keep Talking and nobody explodes - simple Wires module"));
-  Serial.print(F("Detected: "));
-  Serial.print(wireCount);
-  Serial.println(F(" wires"));
-  Serial.print(F("Serial number: "));
-
-  for (byte x = 0; x < 10; x++) {
-    Serial.print(serialNr[x]);
+void analyzeData() {
+  if (ICbuf[0] == '1') {
+    Serial.println("flagSerial true");
+    flagSerial = true;
   }
-  Serial.println(F(""));
-
-  Serial.println(F("-------------------------------------------------------"));
-  Serial.println(F("Please type in thier color with int value from table below,"));
-  Serial.println(F("in format '121554'."));
-  Serial.println(F("1 = RED"));
-  Serial.println(F("2 = BLUE"));
-  Serial.println(F("3 = YELLOW"));
-  Serial.println(F("4 = WHITE"));
-  Serial.println(F("5 = BLACK"));
-  Serial.println(F("-------------------------------------------------------"));
-  Serial.println(F("You can type now:"));
+  else if (ICbuf[0] == '2') {
+    Serial.println("flagColors true");
+    flagColors = true;
+  }
+  else if (ICbuf[0] == 'A') {
+    Serial.println("flagActive true");
+    flagActive = true;
+  }
+  checkFlags();
 }
 
-void getColors() {
-  byte bufPoz;
+void checkFlags() {
+  if (flagSerial == true) {
+    for (byte x = 0; x < 6; x++) {
+      serialNr[x] = ICbuf[x + 1];
+    }
+    Serial.print(F("Serial number: "));
 
-  for (byte x = 0; x < 6; x++) {
-    serBuf[x] = Serial.read();
+    for (byte x = 0; x < 10; x++) {
+      Serial.print(serialNr[x]);
+    }
+    Serial.println(F(""));
+    flagSerial = false;
   }
+}
 
+void setColors() {
+  Serial.println("cekm na na colors");
+  while (flagColors == false) {
+    delay(100);                            //wait for data from master;
+  }
+  flagColors = false;
+  Serial.println("got colors");
   for (byte x = 0; x < 6; x++) {
-    if (serBuf[x] > 0) {
-      bufPoz++;
-    }
+    wireColor[x] = ICbuf[x + 1] - 48;
+    Serial.print(wireColor[x], DEC);
+    Serial.println();
   }
-
-  for (byte x = 0; x < bufPoz; x++) {
-    if (char(serBuf[x]) == '1') {
-      wireColor[x] = c_RED;
-    }
-    if (char(serBuf[x]) == '2') {
-      wireColor[x] = c_BLUE;
-    }
-    if (char(serBuf[x]) == '3') {
-      wireColor[x] = c_YELLOW;
-    }
-    if (char(serBuf[x]) == '4') {
-      wireColor[x] = c_WHITE;
-    }
-    if (char(serBuf[x]) == '5') {
-      wireColor[x] = c_BLACK;
-    }
-  }
-
-  Serial.println(F("wire colors in memory:"));
-  for (byte x = 0; x < 6; x++) {
-    if (wireColor[x] > 0) {
-      Serial.print(wireColor[x], DEC);
-    }
-  }
-  Serial.println(F(""));
-  Serial.println(F("in position:"));
-  for (byte x = 0; x < 6; x++) {
-    if (wirePosition[x] > 0) {
-      Serial.print(wirePosition[x]);
-    }
-  }
-  Serial.println(F(""));
-  Serial.println(F("-------------------------------------------------------"));
 }
 
 void getCutMask() {
@@ -279,6 +256,7 @@ void win() {
   //module deactivated
   digitalWrite(win_LED, HIGH);
   Serial.println(F("You win!"));
+                                                        //  need to tell to the master
   while (true) {}; //do nothing until restart
 }
 
@@ -289,3 +267,17 @@ void Error() {
   digitalWrite(ERR, HIGH);
 }
 
+void rec(int in) {
+  Serial.print("recived:");
+  for (byte x = 0; x < in; x++) {
+    ICbuf[x] = Wire.read();
+    Serial.print(char(ICbuf[x]));
+    Serial.print(",");
+  }
+  Serial.println();
+  analyzeData();
+}
+
+void req() {
+  Wire.write(moduleID);
+}
