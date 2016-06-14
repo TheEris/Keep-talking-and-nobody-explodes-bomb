@@ -5,13 +5,6 @@
 #define ERR 4                                                 //  Error line
 #define GREEN_LED 5                                           //  Green led on the module
 
-#define NrInPins 3                                            //  Number of INPUTS
-const byte pinsIn[NrInPins] = {7, 8, 9};                      //  pins INPUT
-#define NrOutPins 2                                           //  Number of OUTPUTS
-const byte pinsOut[NrOutPins] = {ERR, GREEN_LED};             //  pins OUTPUT
-
-void analyzeBuf();                                            //  looks at first byte and calls fuctions
-void getSerial();                                             //  get Serial number from buffer
 byte ICbuf[10];                                               //  buffer for I2C bus
 char moduleStat = 'E';                                        //  status of module (Enabled/Disabled)
 boolean flagActive = false;                                   //  master activated this module
